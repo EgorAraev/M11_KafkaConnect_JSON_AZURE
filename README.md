@@ -1,78 +1,90 @@
-# Kafka connect in Kubernetes
+# Setup
+First we will need the Azure resources
 
-## Install Confluent Hub Client
+### Terraform
 
-You can find the installation manual [here](https://docs.confluent.io/home/connect/confluent-hub/client.html)
+Login to Azure
+```bash
+az login
+```
 
-## Create a custom docker image
+Deploy ADLS Gen 2 storage and Azure Kubernetes Service with the following commands:
+```bash
+terraform init
+terraform plan -out terraform.plan
+terraform apply terraform.plan
+```
 
-For running the azure connector, you can create your own docker image. Create your azure connector image and build it.
+Go to ADLS Gen 2 resource and set the OAuth 2.0 access with an Azure service principal: https://docs.microsoft.com/en-us/azure/databricks/data/data-sources/azure/adls-gen2/azure-datalake-gen2-sp-access
 
-## Launch Confluent for Kubernetes
+Copy the following credentials:
+* "abfss://container-name@storage-account.dfs.core.windows.net/" to `STORAGE_PATH` in `main.py`
+* application-client-id to `APP_ID` in `main.py`
+* directory-id to `DIRECTORY_ID` in `main.py`
+* client-secret to `AZURE_SECRET` in `src/.env` file (see `src/.env.example`)
 
-### Create a namespace
 
-- Create the namespace to use:
+### Geocoding API
 
-  ```cmd
-  kubectl create namespace confluent
-  ```
+Sign up on https://opencagedata.com/ , get the API key and put it in the `src/.env` file 
 
-- Set this namespace to default for your Kubernetes context:
+### Azure Container Registry
 
-  ```cmd
-  kubectl config set-context --current --namespace confluent
-  ```
+Create your Azure Container Registry https://docs.microsoft.com/en-us/azure/container-registry/container-registry-get-started-portal
 
-### Install Confluent for Kubernetes
+Login
+```bash
+az acr login --name <registry-name>
+```
 
-- Add the Confluent for Kubernetes Helm repository:
+Build your image and push it
+```bash
+docker build -f ./connectors/Dockerfile -t <registry-name>.azurecr.io/<image-name>:<tag> .
+docker push <registry-name>.azurecr.io/<image-name>:<tag>
+```
 
-  ```cmd
-  helm repo add confluentinc https://packages.confluent.io/helm
-  helm repo update
-  ```
+Attach the Azure Container Registry to Azure Kubernetes Service
+```bash
+az aks update -n <aks_resource_name> -g <aks_resource_group_name> --attach-acr <registry-name>
+```
 
-- Install Confluent for Kubernetes:
+Get credentials for AKS cluster
+```bash
+az aks update -n <aks_resource_name> -g <aks_resource_group_name> --attach-acr <registry-name>
+```
 
-  ```cmd
-  helm upgrade --install confluent-operator confluentinc/confluent-for-kubernetes
-  ```
+# Run
 
-### Install Confluent Platform
+Submit the Spark Job with the following command:
+```bash
+spark-submit --master k8s://<your-azure-kubernetes-cluster>.hcp.<region>.azmk8s.io\
+ --deploy-mode cluster --name m06sparkbasics --executor-memory 3G --driver-memory 3G\
+  --conf spark.sql.broadcastTimeout=6000 --conf spark.kubernetes.container.image.pullPolicy=Always\
+   --conf spark.kubernetes.container.image=<your-azure-container-registry>.azurecr.io/<container-name>:<tag>\
+     local:///opt/main.py
 
-- Install all Confluent Platform components:
+```
 
-  ```cmd
-  kubectl apply -f ./confluent-platform.yaml
-  ```
+# Result
 
-- Install a sample producer app and topic:
+Pods started
 
-  ```cmd
-  kubectl apply -f ./producer-app-data.yaml
-  ```
+![pods_started](screenshots/pods_started.png)
 
-- Check that everything is deployed:
+Spark UI view:
 
-  ```cmd
-  kubectl get pods -o wide 
-  ```
+![spark_ui_view](screenshots/spark_ui_view.png)
 
-### View Control Center
 
-- Set up port forwarding to Control Center web UI from local machine:
+The job got completed successfully
 
-  ```cmd
-  kubectl port-forward controlcenter-0 9021:9021
-  ```
+![pods_completed](screenshots/pods_completed.png)
 
-- Browse to Control Center: [http://localhost:9021](http://localhost:9021)
+We can see the result data in ADLS Gen 2 with preserved partitioning
 
-## Create a kafka topic
+![results](screenshots/results.png)
 
-- The topic should have at least 3 partitions because the azure blob storage has 3 partitions. Name the new topic: "expedia".
+Example of joined data
 
-## Prepare the azure connector configuration
+![result_example](screenshots/result_example.png)
 
-## Upload the connector file through the API

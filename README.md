@@ -1,7 +1,6 @@
-# Setup
-First we will need the Azure resources
+# Kafka connect in Kubernetes
 
-### Terraform
+## Terraform
 
 Login to Azure
 ```bash
@@ -15,18 +14,7 @@ terraform plan -out terraform.plan
 terraform apply terraform.plan
 ```
 
-Go to ADLS Gen 2 resource and set the OAuth 2.0 access with an Azure service principal: https://docs.microsoft.com/en-us/azure/databricks/data/data-sources/azure/adls-gen2/azure-datalake-gen2-sp-access
-
-Copy the following credentials:
-* "abfss://container-name@storage-account.dfs.core.windows.net/" to `STORAGE_PATH` in `main.py`
-* application-client-id to `APP_ID` in `main.py`
-* directory-id to `DIRECTORY_ID` in `main.py`
-* client-secret to `AZURE_SECRET` in `src/.env` file (see `src/.env.example`)
-
-
-### Geocoding API
-
-Sign up on https://opencagedata.com/ , get the API key and put it in the `src/.env` file 
+## Create a custom docker image
 
 ### Azure Container Registry
 
@@ -53,38 +41,89 @@ Get credentials for AKS cluster
 az aks update -n <aks_resource_name> -g <aks_resource_group_name> --attach-acr <registry-name>
 ```
 
-# Run
 
-Submit the Spark Job with the following command:
-```bash
-spark-submit --master k8s://<your-azure-kubernetes-cluster>.hcp.<region>.azmk8s.io\
- --deploy-mode cluster --name m06sparkbasics --executor-memory 3G --driver-memory 3G\
-  --conf spark.sql.broadcastTimeout=6000 --conf spark.kubernetes.container.image.pullPolicy=Always\
-   --conf spark.kubernetes.container.image=<your-azure-container-registry>.azurecr.io/<container-name>:<tag>\
-     local:///opt/main.py
+## Launch Confluent for Kubernetes
 
-```
+### Create a namespace
 
-# Result
+- Create the namespace to use:
 
-Pods started
+  ```cmd
+  kubectl create namespace confluent
+  ```
 
-![pods_started](screenshots/pods_started.png)
+- Set this namespace to default for your Kubernetes context:
 
-Spark UI view:
+  ```cmd
+  kubectl config set-context --current --namespace confluent
+  ```
 
-![spark_ui_view](screenshots/spark_ui_view.png)
+### Install Confluent for Kubernetes
 
+- Add the Confluent for Kubernetes Helm repository:
 
-The job got completed successfully
+  ```cmd
+  helm repo add confluentinc https://packages.confluent.io/helm
+  helm repo update
+  ```
 
-![pods_completed](screenshots/pods_completed.png)
+- Install Confluent for Kubernetes:
 
-We can see the result data in ADLS Gen 2 with preserved partitioning
+  ```cmd
+  helm upgrade --install confluent-operator confluentinc/confluent-for-kubernetes
+  ```
 
-![results](screenshots/results.png)
+### Install Confluent Platform
 
-Example of joined data
+- Install all Confluent Platform components:
 
-![result_example](screenshots/result_example.png)
+  ```cmd
+  kubectl apply -f ./confluent-platform.yaml
+  ```
+
+- Check that everything is deployed:
+
+  ```cmd
+  kubectl get pods -o wide 
+  ```
+
+### View Control Center
+
+- Set up port forwarding to Control Center web UI from local machine:
+
+  ```cmd
+  kubectl port-forward controlcenter-0 9021:9021
+  ```
+
+- Browse to Control Center: [http://localhost:9021](http://localhost:9021)
+
+## Report
+
+### Set up confluent platform in kubernetes
+
+![image](screenshots/1-set-up-platform.png)
+
+### See the pods running
+
+![image](screenshots/2-set-up-complete.png)
+
+### View Control Center
+
+![image](screenshots/3-control-center.png)
+
+### Create 'expedia' topic with 3 partitions
+
+![image](screenshots/4-topic-expedia.png)
+
+### Add source connector by uploading `connectors/azure-source-cc-expedia.json`
+
+![image](screenshots/5-add-connector.png)
+
+### See the connector running
+
+![image](screenshots/6-connector-running.png)
+
+### Check the topic being populated with dates masked
+
+![image](screenshots/7-check-messages.png)
 

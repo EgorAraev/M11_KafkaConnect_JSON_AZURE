@@ -4,7 +4,7 @@ terraform {
   resource_group_name  = "araev201"
   storage_account_name = "araev201"
   container_name = "araev201"
-  key = "terraform.tfstate"
+  key = "terraformstream.tfstate"
   }
 }
 

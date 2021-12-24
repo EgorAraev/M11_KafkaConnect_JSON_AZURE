@@ -34,7 +34,7 @@ metadata:
 spec:
   replicas: 1
   image:
-    application: araev20111creg.azurecr.io/connector20111:1
+    application: araev20112creg.azurecr.io/connector20112:1
     init: confluentinc/cp-init-container-operator:6.1.0.0
   dependencies:
     kafka:
